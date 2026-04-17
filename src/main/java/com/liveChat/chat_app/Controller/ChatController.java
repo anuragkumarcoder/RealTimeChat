@@ -23,28 +23,27 @@ public class ChatController {
 
     // When a message is sent to /app/sendMessage/{roomId}
     @MessageMapping("/sendMessage/{roomId}")
-    // The response (the message) is sent to /topic/room/{roomId}
     @SendTo("/topic/room/{roomId}")
-    public Message sendMessage(
-            @DestinationVariable String roomId,
-            @RequestBody MessageRequest request
-    ) {
-        // 1. Find the room from the database
+    public Message sendMessage(@DestinationVariable String roomId, @RequestBody MessageRequest request) {
         Room room = roomRepo.findByRoomId(request.getRoomId());
 
-        // 2. Create the message entity from the request payload
         Message message = new Message();
         message.setContent(request.getContent());
         message.setSender(request.getSender());
         message.setTimeStamp(LocalDateTime.now());
 
         if (room != null) {
+            // FIX: Double-check null safety for the message list
+            if (room.getMessages() == null) {
+                room.setMessages(new java.util.ArrayList<>());
+            }
             room.getMessages().add(message);
             roomRepo.save(room);
-        } else {
-
-            throw new RuntimeException("Room not found!");
+            return message;
         }
-         return message;
+
+        // FIX: Just return null or log the error instead of throwing a RuntimeException
+        System.out.println("Room not found: " + roomId);
+        return null;
     }
 }

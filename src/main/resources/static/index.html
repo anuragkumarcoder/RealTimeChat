@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveChat | Premium</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+  <style>
+    :root {
+        --primary: #8b5cf6;
+        --secondary: #ec4899;
+        --bg: #0f172a;
+        --glass: rgba(255, 255, 255, 0.05);
+        --text: #f8fafc;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        position: relative;
+    }
+
+    /* --- Moving Background Objects --- */
+    .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(80px);
+        z-index: -1;
+        animation: move 20s infinite alternate;
+    }
+    .orb-1 { width: 400px; height: 400px; background: var(--primary); top: -10%; left: -10%; opacity: 0.4; }
+    .orb-2 { width: 300px; height: 300px; background: var(--secondary); bottom: -5%; right: -5%; opacity: 0.3; animation-delay: -5s; }
+
+    @keyframes move {
+        from { transform: translate(0, 0); }
+        to { transform: translate(100px, 100px); }
+    }
+
+    /* --- Glass Container --- */
+    .container {
+        background: var(--glass);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.1);
+        width: 450px;
+        height: 650px;
+        border-radius: 24px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+
+    /* --- Forms & Buttons --- */
+    .form-screen {
+        padding: 40px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100%;
+    }
+
+    h2 { font-size: 2rem; margin-bottom: 8px; background: linear-gradient(to right, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    p { color: #94a3b8; margin-bottom: 30px; font-size: 0.9rem; }
+
+    input {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.1);
+        padding: 14px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 16px;
+        outline: none;
+        transition: 0.3s;
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3); }
+
+    .btn-group { display: flex; gap: 10px; }
+    button {
+        flex: 1;
+        padding: 14px;
+        border-radius: 12px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        transition: 0.3s;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-secondary { background: rgba(255,255,255,0.1); color: white; }
+    button:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+    /* --- Chat UI --- */
+    #chat-screen { display: none; flex-direction: column; height: 100%; }
+    .chat-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; }
+
+    #message-area {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .msg {
+        max-width: 80%;
+        padding: 12px 16px;
+        border-radius: 16px;
+        font-size: 0.95rem;
+        animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .sent { align-self: flex-end; background: var(--primary); border-bottom-right-radius: 4px; }
+    .received { align-self: flex-start; background: rgba(255,255,255,0.1); border-bottom-left-radius: 4px; }
+    .msg-info { font-size: 0.7rem; opacity: 0.6; margin-bottom: 4px; display: block; }
+
+    .chat-input { padding: 20px; display: flex; gap: 10px; }
+    .chat-input input { margin: 0; flex: 1; }
+  </style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="container">
+  <div id="login-screen" class="form-screen">
+    <h2>LiveChat</h2>
+    <p>Create a room or join an existing one to start chatting.</p>
+    <input type="text" id="roomId" placeholder="Room ID (e.g. general)">
+    <input type="text" id="sender" placeholder="Your Name">
+    <div class="btn-group">
+      <button class="btn-secondary" onclick="createRoom()">Create Room</button>
+      <button class="btn-primary" onclick="connect()">Join Room</button>
+    </div>
+  </div>
+
+  <div id="chat-screen">
+    <div class="chat-header">
+      <div>
+        <div id="room-display" style="font-weight: bold; font-size: 1.1rem;"></div>
+        <div style="font-size: 0.75rem; color: #10b981;">● Active Connection</div>
+      </div>
+      <button class="btn-secondary" style="padding: 5px 10px; font-size: 0.7rem;" onclick="location.reload()">Leave</button>
+    </div>
+    <div id="message-area"></div>
+    <div class="chat-input">
+      <input type="text" id="messageContent" placeholder="Write something...">
+      <button class="btn-primary" onclick="sendMessage()" style="flex: 0 0 60px;">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let stompClient = null;
+  let currentUser = "";
+  const API_BASE = "http://localhost:8080/api/v1/rooms";
+
+  // 1. Create Room Logic (Talks to your RoomController @PostMapping)
+  async function createRoom() {
+      const roomId = document.getElementById('roomId').value;
+      if(!roomId) return alert("Enter a Room ID");
+
+      try {
+          const response = await fetch(API_BASE, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain' }, // Matches your @RequestBody String roomId
+              body: roomId
+          });
+
+          if(response.ok) {
+              alert("Room Created! Now click Join.");
+          } else {
+              const error = await response.text();
+              alert(error); // Displays "Room already exist"
+          }
+      } catch (e) {
+          alert("Backend not reachable. Ensure Spring Boot is running.");
+      }
+  }
+
+  // 2. Connection Logic (WebSockets + History)
+  async function connect() {
+      const roomId = document.getElementById('roomId').value;
+      currentUser = document.getElementById('sender').value;
+
+      if(!roomId || !currentUser) return alert("All fields required");
+
+      // Fetch History first from your RoomController
+      try {
+          const historyRes = await fetch(`${API_BASE}/${roomId}/messages`);
+          if(historyRes.ok) {
+              const history = await historyRes.json();
+              history.forEach(msg => appendToUI(msg));
+          }
+      } catch(e) { console.log("History fetch failed"); }
+
+      // Setup WebSocket
+      const socket = new SockJS('http://localhost:8080/chat');
+      stompClient = Stomp.over(socket);
+      stompClient.debug = null; // Quiet the console
+
+      stompClient.connect({}, () => {
+          document.getElementById('login-screen').style.display = 'none';
+          document.getElementById('chat-screen').style.display = 'flex';
+          document.getElementById('room-display').innerText = "# " + roomId;
+
+          // Subscribe to @SendTo topic
+          stompClient.subscribe(`/topic/room/${roomId}`, (res) => {
+              appendToUI(JSON.parse(res.body));
+          });
+      });
+  }
+
+  // 3. Send Message
+  function sendMessage() {
+      const roomId = document.getElementById('roomId').value;
+      const content = document.getElementById('messageContent').value;
+
+      if(stompClient && content) {
+          const payload = { sender: currentUser, content: content, roomId: roomId };
+          stompClient.send(`/app/sendMessage/${roomId}`, {}, JSON.stringify(payload));
+          document.getElementById('messageContent').value = '';
+      }
+  }
+
+  function appendToUI(msg) {
+      const area = document.getElementById('message-area');
+      const isMe = msg.sender === currentUser;
+      const div = document.createElement('div');
+      div.className = `msg ${isMe ? 'sent' : 'received'}`;
+      div.innerHTML = `<span class="msg-info">${isMe ? 'You' : msg.sender}</span>${msg.content}`;
+      area.appendChild(div);
+      area.scrollTop = area.scrollHeight;
+  }
+</script>
+</body>
+</html>

@@ -38,25 +38,18 @@ public class RoomController {
         return ResponseEntity.ok(room);
     }
     @GetMapping("/{roomId}/messages")
-    public ResponseEntity<List<Message>> getMessage(@PathVariable String roomId,@RequestParam(
-                                                                value = "page",
-                                                                defaultValue = "0",
-                                                                required = false
-                                                        ) int page,
+    public ResponseEntity<List<Message>> getMessage(@PathVariable String roomId, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        Room room = roomRepo.findByRoomId(roomId);
+        if (room == null) return ResponseEntity.badRequest().build();
 
-                                                    @RequestParam(
-                                                            value = "size",
-                                                            defaultValue = "20",
-                                                            required = false
-                                                    ) int size){
-        Room room=roomRepo.findByRoomId(roomId);
-        if(room==null){
-            return ResponseEntity.badRequest().build();
+        // DEFECT FIX: Check for null before calling .size()
+        List<Message> messages = room.getMessages();
+        if (messages == null) {
+            messages = new java.util.ArrayList<>();
         }
-        List<Message> messages=room.getMessages();
+
         int start = Math.max(0, messages.size() - (page + 1) * size);
         int end = Math.min(messages.size(), start + size);
-        List<Message> paginatedMessages = messages.subList(start, end);
-        return ResponseEntity.ok(paginatedMessages);
+        return ResponseEntity.ok(messages.subList(start, end));
     }
 }
