@@ -153,7 +153,7 @@
     </div>
     <div id="message-area"></div>
     <div class="chat-input">
-      <input type="text" id="messageContent" placeholder="Write something...">
+      <input type="text" id="messageContent" placeholder="Write something..." onkeypress="handleKeyPress(event)">
       <button class="btn-primary" onclick="sendMessage()" style="flex: 0 0 60px;">Send</button>
     </div>
   </div>
@@ -164,71 +164,82 @@
   let currentUser = "";
   const API_BASE = "http://localhost:8080/api/v1/rooms";
 
-  // 1. Create Room Logic (Talks to your RoomController @PostMapping)
+  // 1. Create Room Logic
   async function createRoom() {
-      const roomId = document.getElementById('roomId').value;
+      const roomId = document.getElementById('roomId').value.trim();
       if(!roomId) return alert("Enter a Room ID");
 
       try {
           const response = await fetch(API_BASE, {
               method: 'POST',
-              headers: { 'Content-Type': 'text/plain' }, // Matches your @RequestBody String roomId
+              headers: { 'Content-Type': 'text/plain' },
               body: roomId
           });
 
           if(response.ok) {
-              alert("Room Created! Now click Join.");
+              alert("Room Created Successfully! Now click Join.");
           } else {
               const error = await response.text();
-              alert(error); // Displays "Room already exist"
+              alert(error);
           }
       } catch (e) {
           alert("Backend not reachable. Ensure Spring Boot is running.");
       }
   }
 
-  // 2. Connection Logic (WebSockets + History)
+  // 2. Connection Logic
   async function connect() {
-      const roomId = document.getElementById('roomId').value;
-      currentUser = document.getElementById('sender').value;
+      const roomId = document.getElementById('roomId').value.trim();
+      currentUser = document.getElementById('sender').value.trim();
 
-      if(!roomId || !currentUser) return alert("All fields required");
+      if(!roomId || !currentUser) return alert("All fields are required");
 
-      // Fetch History first from your RoomController
+      // Fetch Chat History first
       try {
           const historyRes = await fetch(`${API_BASE}/${roomId}/messages`);
           if(historyRes.ok) {
               const history = await historyRes.json();
               history.forEach(msg => appendToUI(msg));
           }
-      } catch(e) { console.log("History fetch failed"); }
+      } catch(e) {
+          console.log("History fetch failed or room has no history yet");
+      }
 
-      // Setup WebSocket
+      // Setup WebSocket using SockJS
       const socket = new SockJS('http://localhost:8080/chat');
       stompClient = Stomp.over(socket);
-      stompClient.debug = null; // Quiet the console
+      stompClient.debug = null;
 
       stompClient.connect({}, () => {
           document.getElementById('login-screen').style.display = 'none';
           document.getElementById('chat-screen').style.display = 'flex';
           document.getElementById('room-display').innerText = "# " + roomId;
 
-          // Subscribe to @SendTo topic
+          // Subscribe to room topic
           stompClient.subscribe(`/topic/room/${roomId}`, (res) => {
               appendToUI(JSON.parse(res.body));
           });
+      }, (error) => {
+          alert("WebSocket Connection Failed: " + error);
       });
   }
 
   // 3. Send Message
   function sendMessage() {
-      const roomId = document.getElementById('roomId').value;
-      const content = document.getElementById('messageContent').value;
+      const roomId = document.getElementById('roomId').value.trim();
+      const content = document.getElementById('messageContent').value.trim();
 
       if(stompClient && content) {
           const payload = { sender: currentUser, content: content, roomId: roomId };
           stompClient.send(`/app/sendMessage/${roomId}`, {}, JSON.stringify(payload));
           document.getElementById('messageContent').value = '';
+      }
+  }
+
+  // Allow pressing Enter key to send message
+  function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+          sendMessage();
       }
   }
 
